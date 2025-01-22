@@ -3,87 +3,55 @@ name: Recovery Builder - TWRP
 on:
   workflow_dispatch:
     inputs:
+      MANIFEST_URL:
+        description: 'MANIFEST_URL (use SSH keys if using git@github.com:XXXXX)'
+        required: true
+        default: 'https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp'
       MANIFEST_BRANCH:
         description: 'TWRP Minimal-Manifest Branch'
         required: true
-        default: ''
+        default: 'twrp-11'
         type: choice
         options:
         - twrp-12.1
         - twrp-11
-      DEVICE_TREE:
-        description: 'Custom Recovery Tree' # Your already made Device Tree for TWRP
+      DEVICE_TREE_URL:
+        description: 'Custom Recovery Tree URL'
         required: true
         default: 'https://github.com/cd-Crypton/custom_recovery_tree_realme_macedonia'
       DEVICE_TREE_BRANCH:
-        description: 'Custom Recovery Tree Branch' # Your Device Tree Branch, make sure it's right.
+        description: 'Custom Recovery Tree Branch'
         required: true
         default: 'twrp-12.1'
       DEVICE_PATH:
-        description: 'Specify your Device Path' # As is, just like your DEVICE_PATH in your BoardConfig.mk
+        description: 'Device Path (as in BoardConfig.mk)'
         required: true
         default: 'device/realme/macedonia'
       DEVICE_NAME:
-        description: 'Specify your Device Codename' # As is, just like your PRODUCT_DEVICE in your device tree.
+        description: 'Device Codename (as in PRODUCT_DEVICE)'
         required: true
         default: 'macedonia'
       BUILD_TARGET:
-        description: 'Specify your Build Target' # Pick among boot, recovery and vendor_boot
+        description: 'Build Target (e.g., boot, recovery, vendor_boot)'
         required: true
         default: 'recovery'
         type: choice
         options:
-    android-recoveryname: Build TWRP
-
-on:
-  workflow_dispatch:
-    inputs:
-      MANIFEST_URL:
-        description: 'MANIFEST_URL (if want to use SSH keys, use git@github.com:XXXXX)'
-        required: true
-        default: 'https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp'
-      MANIFEST_BRANCH:
-        description: 'MANIFEST_BRANCH'
-        required: true
-        default: 'twrp-11'
-      DEVICE_TREE_URL:
-        description: 'DEVICE_TREE_URL'
-        required: true
-        default: 'https://github.com/IMYdev/twrp_device_infinix_helios'
-      DEVICE_TREE_BRANCH:
-        description: 'DEVICE_TREE_BRANCH'
-        required: true
-        default: 'twrp-11'
-      DEVICE_PATH:
-        description: 'DEVICE_PATH'
-        required: true
-        default: 'device/infinix/helios'
-      COMMON_TREE_URL:
-        description: 'COMMON_TREE_URL (if no common tree, leave blank)'
-        required: false
-      COMMON_PATH:
-        description: 'COMMON_PATH (if no common tree, leave blank)'
-        required: false
-      DEVICE_NAME:
-        description: 'DEVICE_NAME'
-        required: true
-        default: 'helios'
-      MAKEFILE_NAME:
-        description: 'MAKEFILE_NAME'
-        required: true
-        default: 'twrp_helios'
-      BUILD_TARGET:
-        description: 'BUILD_TARGET'
-        required: true
-        default: 'boot'
+        - boot
+        - recovery
+        - vendor_boot
 
 jobs:
   build:
-    if: github.event.repository.owner.id == github.event.sender.id
+    name: Build TWRP by ${{ github.actor }}
     runs-on: ubuntu-20.04
+    if: github.event.repository.owner.id == github.event.sender.id
     permissions:
       contents: write
     steps:
+    - name: Check Out Repository
+      uses: actions/checkout@v3
+
     - name: Display Run Parameters
       run: |
         echo "::group::User Environment Variables"
@@ -93,23 +61,14 @@ jobs:
         echo "Device Tree Branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}"
         echo "Device Path: ${{ github.event.inputs.DEVICE_PATH }}"
         echo "Device Name: ${{ github.event.inputs.DEVICE_NAME }}"
-        echo "Makefile Name: ${{ github.event.inputs.MAKEFILE_NAME }}"
         echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}.img"
         echo "::endgroup::"
- 
-    # You might want to Checkout your repo first, but not mandatory
-    - name: Check Out
-      uses: actions/checkout@v3
-    # Cleanup The Actions Workspace Using Custom Composite Run Actions
-    - name: Cleanup
-      uses: rokibhasansagar/slimhub_actions@main
-      # That's it! Now use your normal steps
 
-    - name: Prepare the environment
+    - name: Prepare the Environment
       run: |
         sudo apt update
         sudo apt -y upgrade
-        sudo apt -y install gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib libc6-dev lib32ncurses5-dev x11proto-core-dev libx11-dev tree lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libwxgtk3.0-gtk3-dev libxml2 lzop pngcrush schedtool squashfs-tools imagemagick libbz2-dev lzma ncftp qemu-user-static libstdc++-10-dev libncurses5 python
+        sudo apt -y install gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib libc6-dev lib32ncurses5-dev x11proto-core-dev libx11-dev tree lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libwxgtk3.0-gtk3-dev libxml2 lzop pngcrush schedtool squashfs-tools imagemagick libbz2-dev lzma ncftp qemu-user-static libstdc++-10-dev libncurses5 python3
 
     - name: Install OpenJDK
       uses: actions/setup-java@v3
@@ -117,76 +76,48 @@ jobs:
         distribution: 'zulu'
         java-version: '8'
 
-    - name: Setup SSH Keys
-      if: ${{ startsWith(github.event.inputs.MANIFEST_URL, 'git@github.com') }}
-      uses: webfactory/ssh-agent@v0.5.4
-      with:
-          ssh-private-key: |
-              ${{ secrets.SSH_PRIVATE_KEY }}
-
-    - name: Install repo
-      run: |
-        mkdir ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        sudo ln -sf ~/bin/repo /usr/bin/repo
-      
-    - name: Initialize repo
-      run: |
-        mkdir workspace
-        cd workspace
-        echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
-        git config --global user.name "Nico170420"
-        git config --global user.email "b170420nc@gmail.com"
-        repo init --depth=1 -u ${{ github.event.inputs.MANIFEST_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }}
-      id: pwd
-          
-    - name: Repo Sync
-      run: |
-        repo sync -j$(nproc --all) --force-sync
-      working-directory: workspace
-      
-    - name: Clone device tree
-      run: |
-        git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
-      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
-
-    - name: Clone common tree
-      if: |
-        github.event.inputs.COMMON_TREE_URL != null
-        && github.event.inputs.COMMON_PATH != null
-      run: |
-        git clone ${{ github.event.inputs.COMMON_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.COMMON_PATH }}
-      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
-
-    - name: Check Build Tree
-      uses: haya14busa/action-cond@v1
-      id: buildtree
-      with:
-        cond: ${{ github.event.inputs.MANIFEST_BRANCH == 'twrp-11' || github.event.inputs.MANIFEST_BRANCH == 'twrp-12.1' }}
-        if_true: twrp
-        if_false: omni
-
-    - name: Sync Device Dependencies
-      run: |
-        bash ${GITHUB_WORKSPACE}/scripts/convert.sh ${{ github.event.inputs.DEVICE_PATH }}/${{ steps.buildtree.outputs.value }}.dependencies
-        repo sync -j$(nproc --all)
-      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
-      continue-on-error: true
-
     - name: Set Swap Space
       uses: pierotofy/set-swap-space@master
       with:
         swap-size-gb: 12
 
-    - name: Building recovery
+    - name: Install repo Tool
+      run: |
+        mkdir ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        sudo ln -sf ~/bin/repo /usr/bin/repo
+
+    - name: Initialize repo
+      run: |
+        mkdir workspace
+        cd workspace
+        echo "workspace-folder=$(pwd)" >> $GITHUB_OUTPUT
+        git config --global user.name "${{ github.actor }}"
+        git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+        repo init --depth=1 -u ${{ github.event.inputs.MANIFEST_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }}
+      id: pwd
+
+    - name: Repo Sync
+      run: |
+        repo sync -j$(nproc --all) --force-sync
+      working-directory: workspace
+
+    - name: Clone Device Tree
+      run: |
+        git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
+      working-directory: ${{ steps.pwd.outputs.workspace-folder }}
+
+    - name: Build Recovery
       run: |
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
-        lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng && make clean && make ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
+        lunch omni_${{ github.event.inputs.DEVICE_NAME }}-eng
+        make clean
+        make ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
       working-directory: ${{ steps.pwd.outputs.workspace-folder }}
 
-    - name: Upload to Release
+    - name: Upload to GitHub Releases
       uses: softprops/action-gh-release@v1
       with:
         files: workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/${{ github.event.inputs.BUILD_TARGET }}.img
@@ -197,85 +128,4 @@ jobs:
           Device: ${{ github.event.inputs.DEVICE_NAME }}
           Target: ${{ github.event.inputs.BUILD_TARGET }}.img
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   - recovery
-        - vendorboot
-      LDCHECK:
-        description: 'Path of blobs to check' # Use it know what kind of dependencies your missing for decryption blobs.
-        required: true
-        default: 'system/bin/qseecomd'
-
-jobs:
-  build:
-    name: Build TWRP by ${{ github.actor }}
-    runs-on: ubuntu-latest
-    if: github.event.repository.owner.id == github.event.sender.id
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    permissions:
-      contents: write
-    steps:
-    - name: Check Out
-      uses: actions/checkout@v4
-      
-    - name: Display Inputs
-      run: |
-        echo "Displaying variables/inputs."
-        echo "Manifest Branch: ${{ github.event.inputs.MANIFEST_BRANCH }}"
-        echo "Device Tree: ${{ github.event.inputs.DEVICE_TREE }}"
-        echo "Device Branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}"
-        echo "Device Path: ${{ github.event.inputs.DEVICE_PATH }}"
-        echo "Device Name: ${{ github.event.inputs.DEVICE_NAME }}"
-        echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}image"
-
-    - name: Cleanup
-      uses: rokibhasansagar/slimhub_actions@main
-      
-    - name: Set Swap Space
-      uses: pierotofy/set-swap-space@master
-      with:
-        swap-size-gb: 24
-        
-
-    - name: Prepare the environment
-      run: |
-        sudo apt update
-        sudo apt -y upgrade
-        sudo apt -y install gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib libc6-dev lib32ncurses5-dev x11proto-core-dev libx11-dev tree lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libwxgtk3.0-gtk3-dev libxml2 lzop pngcrush schedtool squashfs-tools imagemagick libbz2-dev lzma ncftp qemu-user-static libstdc++-10-dev libncurses5 python3
-
-    - name: Install OpenJDK
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'zulu'
-        java-version: '8'
-
-    - name: Install Git-Repo
-      run: |
-        mkdir ~/bin
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        sudo ln -sf ~/bin/repo /usr/bin/repo
-
-    - name: Check Manifest Branch
-      uses: haya14busa/action-cond@v1
-      id: manifest
-      with:
-        cond: ${{ github.event.inputs.MANIFEST_BRANCH == 'twrp-11' || github.event.inputs.MANIFEST_BRANCH == 'twrp-12.1' }}
-        if_true: https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git
-        if_false: https://github.com/minimal-manifest-twrp/platform_manifest_twrp_omni.git
-
-    - name: Initialize Repo
-      run: |
-        mkdir android-recovery
-        cd android-recovery
-        git config --global user.name "${{ github.actor }}"
-        git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-        repo init --depth=1 -u ${{ steps.manifest.outputs.value }} -b ${{ github.event.inputs.MANIFEST_BRANCH }}
-        
-    - name: Repo Sync
-      run: |
-        cd android-recovery
-        repo sync -j$(nproc --all) --force-sync
-      
-    - name: Clone Device Tree
-      run: |
-        cd android-recovery
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
