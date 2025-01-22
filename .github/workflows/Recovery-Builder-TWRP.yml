@@ -6,68 +6,80 @@ on:
       MANIFEST_BRANCH:
         description: 'TWRP Minimal-Manifest Branch'
         required: true
-        default: 'twrp-12.1'
+        default: ''
         type: choice
         options:
-          - twrp-12.1
-          - twrp-11
+        - twrp-12.1
+        - twrp-11
       DEVICE_TREE:
-        description: 'Custom Recovery Tree'
+        description: 'Custom Recovery Tree' # Your already made Device Tree for TWRP
         required: true
         default: 'https://github.com/cd-Crypton/custom_recovery_tree_realme_macedonia'
       DEVICE_TREE_BRANCH:
-        description: 'Custom Recovery Tree Branch'
+        description: 'Custom Recovery Tree Branch' # Your Device Tree Branch, make sure it's right.
         required: true
         default: 'twrp-12.1'
       DEVICE_PATH:
-        description: 'Specify your Device Path'
+        description: 'Specify your Device Path' # As is, just like your DEVICE_PATH in your BoardConfig.mk
         required: true
         default: 'device/realme/macedonia'
       DEVICE_NAME:
-        description: 'Specify your Device Codename'
+        description: 'Specify your Device Codename' # As is, just like your PRODUCT_DEVICE in your device tree.
         required: true
         default: 'macedonia'
       BUILD_TARGET:
-        description: 'Specify your Build Target'
+        description: 'Specify your Build Target' # Pick among boot, recovery and vendor_boot
         required: true
         default: 'recovery'
         type: choice
         options:
-          - boot
-          - recovery
-          - vendor_boot
+        - recovery
+        - boot
+        - vendor_boot
 
 jobs:
   build:
-    name: Build TWRP by ${{ github.actor }}
     runs-on: ubuntu-20.04
     permissions:
       contents: write
     steps:
     - name: Display Run Parameters
       run: |
+        echo "::group::User Environment Variables"
+        echo "Manifest URL: ${{ github.event.inputs.MANIFEST_URL }}"
         echo "Manifest Branch: ${{ github.event.inputs.MANIFEST_BRANCH }}"
-        echo "Device Tree: ${{ github.event.inputs.DEVICE_TREE }}"
+        echo "Device Tree URL: ${{ github.event.inputs.DEVICE_TREE_URL }}"
         echo "Device Tree Branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}"
         echo "Device Path: ${{ github.event.inputs.DEVICE_PATH }}"
         echo "Device Name: ${{ github.event.inputs.DEVICE_NAME }}"
-        echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}"
+        echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}.img"
+        echo "::endgroup::"
 
-    - name: Check Out Repository
+    - name: Checkout Source Code
       uses: actions/checkout@v3
+
+    - name: Cleanup Workspace
+      run: |
+        sudo rm -rf /home/runner/work/* || true
 
     - name: Prepare Environment
       run: |
         sudo apt update
-        sudo apt -y install gperf gcc-multilib g++-multilib libc6-dev lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc bc ccache libstdc++-10-dev python3
+        sudo apt -y upgrade
+        sudo apt -y install gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib libc6-dev lib32ncurses5-dev x11proto-core-dev libx11-dev tree lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev libwxgtk3.0-gtk3-dev libxml2 lzop pngcrush schedtool squashfs-tools imagemagick libbz2-dev lzma ncftp qemu-user-static libstdc++-10-dev libncurses5 python
 
-    - name: Install OpenJDK 8
+    - name: Set Swap Space
+      uses: pierotofy/set-swap-space@master
+      with:
+        swap-size-gb: 24
+
+    - name: Install OpenJDK
       uses: actions/setup-java@v3
       with:
         distribution: 'zulu'
         java-version: '8'
 
-    - name: Install Git Repo Tool
+    - name: Install repo
       run: |
         mkdir ~/bin
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
@@ -80,41 +92,30 @@ jobs:
         cd workspace
         git config --global user.name "${{ github.actor }}"
         git config --global user.email "${{ github.actor }}@users.noreply.github.com"
-        repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp -b ${{ github.event.inputs.MANIFEST_BRANCH }}
+        repo init --depth=1 -u ${{ github.event.inputs.MANIFEST_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }}
+      id: init
 
-    - name: Sync Repo
+    - name: Repo Sync
       run: |
-        cd workspace
         repo sync -j$(nproc --all) --force-sync
+      working-directory: workspace
 
     - name: Clone Device Tree
       run: |
-        cd workspace
-        git clone ${{ github.event.inputs.DEVICE_TREE }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ${{ github.event.inputs.DEVICE_PATH }}
-
-    - name: Set Swap Space
-      uses: pierotofy/set-swap-space@master
-      with:
-        swap-size-gb: 16
+        git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
+      working-directory: workspace
 
     - name: Build Recovery
       run: |
-        cd workspace
         source build/envsetup.sh
         export ALLOW_MISSING_DEPENDENCIES=true
-        lunch omni_${{ github.event.inputs.DEVICE_NAME }}-eng
+        lunch ${{ github.event.inputs.DEVICE_NAME }}-eng
         make clean
         make ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
+      working-directory: workspace
 
-    - name: Upload to GitHub Releases
-      uses: softprops/action-gh-release@v1
+    - name: Upload Build
+      uses: actions/upload-artifact@v3
       with:
-        files: workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/${{ github.event.inputs.BUILD_TARGET }}.img
         name: ${{ github.event.inputs.DEVICE_NAME }}-${{ github.run_id }}
-        tag_name: ${{ github.run_id }}
-        body: |
-          Manifest: ${{ github.event.inputs.MANIFEST_BRANCH }}
-          Device: ${{ github.event.inputs.DEVICE_NAME }}
-          Target: ${{ github.event.inputs.BUILD_TARGET }}.img
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        path: workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/${{ github.event.inputs.BUILD_TARGET }}.img
